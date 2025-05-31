@@ -1,0 +1,144 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+local goalsFolder = workspace:FindFirstChild("[Game] Goal")
+local locking = false
+
+-- Distance-to-offset lookup
+local distanceOffsets = {
+	[57] = Vector3.new(0, 31, 0),
+	[58] = Vector3.new(0, 31, 0),
+	[59] = Vector3.new(0, 31, 0),
+	[60] = Vector3.new(0, 33, 0),
+	[61] = Vector3.new(0, 44, 0),
+	[62] = Vector3.new(0, 59, 0),
+	[63] = Vector3.new(0, 59, 0),
+	[64] = Vector3.new(0, 46, 0),
+	[65] = Vector3.new(0, 40, 0),
+	[66] = Vector3.new(0, 46, 0),
+	[67] = Vector3.new(0, 66, 0),
+	[68] = Vector3.new(0, 66, 0),
+	[69] = Vector3.new(0, 66, 0),
+	[70] = Vector3.new(0, 64, 0),
+	[71] = Vector3.new(0, 60, 0),
+	[72] = Vector3.new(0, 78, 0),
+	[73] = Vector3.new(0, 78, 0),
+	[74] = Vector3.new(0, 76, 0),
+	[75] = Vector3.new(0, 76, 0),
+	[76] = Vector3.new(0, 73, 0),
+	[77] = Vector3.new(0, 70, 0),
+	[78] = Vector3.new(0, 88, 0),
+	[79] = Vector3.new(0, 88, 0),
+	[80] = Vector3.new(0, 85, 0),
+	[81] = Vector3.new(0, 85, 0),
+	[82] = Vector3.new(0, 78, 0),
+	[83] = Vector3.new(0, 78, 0)
+}
+
+-- UI: hint label
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DistanceHintGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local hintLabel = Instance.new("TextLabel")
+hintLabel.Size = UDim2.new(0, 200, 0, 50)
+hintLabel.Position = UDim2.new(0.5, -100, 0.2, 0)
+hintLabel.BackgroundTransparency = 1
+hintLabel.TextColor3 = Color3.fromRGB(0, 150, 255)
+hintLabel.TextStrokeTransparency = 0.5
+hintLabel.TextScaled = true
+hintLabel.Font = Enum.Font.SourceSansBold
+hintLabel.Text = ""
+hintLabel.Visible = true
+hintLabel.Parent = screenGui
+
+-- Get closest goal
+local function getClosestGoal()
+	if not goalsFolder then return nil end
+
+	local closest, minDist = nil, math.huge
+	for _, part in ipairs(goalsFolder:GetDescendants()) do
+		if part:IsA("BasePart") and part.Name == "Goal" then
+			local dist = (hrp.Position - part.Position).Magnitude
+			if dist < minDist then
+				minDist = dist
+				closest = part
+			end
+		end
+	end
+
+	return closest, minDist
+end
+
+-- Camera + UI update
+local function update()
+	local goal, distance = getClosestGoal()
+	if not goal then
+		hintLabel.Text = ""
+		return
+	end
+
+	local roundedDistance = math.floor(distance + 0.5)
+	local offset = distanceOffsets[roundedDistance] or Vector3.new(0, 20, 0)
+
+	-- Update camera if locking
+	if locking then
+		local camPos = camera.CFrame.Position
+		local aimPos = goal.Position + offset
+		camera.CFrame = CFrame.new(camPos, aimPos)
+	end
+
+	-- Update label message
+	local msg
+	if roundedDistance >= 57 and roundedDistance <= 60 then
+		msg = "Use 75"
+	elseif roundedDistance >= 61 and roundedDistance <= 66 then
+		msg = "Use 80"
+	elseif roundedDistance >= 67 and roundedDistance <= 70 then
+		msg = "Use 85"
+	elseif roundedDistance >= 71 and roundedDistance <= 77 then
+		msg = "Use 90"
+	elseif roundedDistance >= 78 and roundedDistance <= 83 then
+		msg = "Use 95"
+	else
+		msg = ""
+	end
+
+	hintLabel.Text = msg
+end
+
+-- Head click (for shooting)
+local function clickOnOwnHead()
+	local head = character:FindFirstChild("Head")
+	if not head then return end
+
+	local screenPoint, onScreen = camera:WorldToViewportPoint(head.Position)
+	if onScreen then
+		VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, true, game, 1)
+		task.wait(0.05)
+		VirtualInputManager:SendMouseButtonEvent(screenPoint.X, screenPoint.Y, 0, false, game, 1)
+	end
+end
+
+-- Run updates
+RunService.RenderStepped:Connect(update)
+
+-- Lock camera while in air
+humanoid.StateChanged:Connect(function(_, newState)
+	if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
+		locking = true
+		if newState == Enum.HumanoidStateType.Jumping then
+			task.delay(0.325, clickOnOwnHead)
+		end
+	elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
+		locking = false
+	end
+end)
